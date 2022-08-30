@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="BlueJelly">
+    <meta name="viewport" content="width=640, maximum-scale=1.0, user-scalable=yes">
+    <title>BOWL(SALZmini2022Receiver)</title>
+    <!-- https://monomonotech.jp/kurage/webbluetooth/getting_started.html -->
+    <script type="text/javascript" src="bluejelly.js"></script>
+</head>
+
+<body id="index">
+    <div id="frameBase">
+        <div id="frameHeader">
+            <span id="text1">BOWL</span>
+            <span id="text2">SALZmini2022Receiver</span>
+            <input type="image" id="btn_info" src="./images/info.png">
+        </div>
+
+        <div id="frameConnection">
+            <input type="image" id="btn_connect" src="./images/disconnect.png">
+            <span id="device_name">デバイス名:</span>
+            <span id="uuid_name">UUID名:</span>
+            <span id="connect_status">接続状態:</span>
+        </div>
+
+        <div id="frameMainDisp">
+            <canvas id="canvas" width="250" height="250"></canvas>
+            <span id="current_water_level">XX%</span>
+            <div id="frame3">
+                <span id="count">カウント:XX</span>
+                <span id="status">装置の状態:XX</span>
+                <span id="watering_count">水やりカウント:XX</span>
+            </div>
+        </div>
+
+        <div id="btn_watering_now">
+            <a href="#">今すぐ水やり</a>
+        </div>
+
+        <div id="frameDebugPrints">
+            <span id="iHd">iHd:XX</span>
+            <span id="nHd">nHd:XX</span>
+            <span id="millisHd">millisHd:XX</span>
+            <span id="waterLevelHd">waterLevelHd:XX</span>
+            <span id="nowMillis">nowMillis:XX</span>
+
+            <span id="dumpL">data length:XX</span>
+            <span id="dump1">00:XX.XX.XX.XX.XX.XX.XX.XX....XX.XX.XX.XX.XX.XX.XX.XX</span>
+            <span id="dump2">10:XX.XX.XX.XX.XX.XX.XX.XX....XX.XX.XX.XX.XX.XX.XX.XX</span>
+            <span id="dump3">20:XX.XX.XX.XX.XX.XX.XX.XX....XX.XX.XX.XX.XX.XX.XX.XX</span>
+        </div>
+
+        <div id="frameHistoryData">
+            <div id="wrap">
+                <div id="conta"></div>
+            </div>
+        </div>
+
+        <div id="frameSettings">
+            <div id="setteings"><img src="./images/settings.png"></div>
+            <span id="watering_level">水やりレベル:XX</span>
+            <input type="range" id="range_watering_level" min="0" max="99" value="20">
+            <span id="yellow_level">黄色レベル:XX</span>
+            <input type="range" id="range_yellow_level" min="0" max="99" value="40">
+            <span id="blue_level">青色レベル:XX</span>
+            <input type="range" id="range_blue_level" min="0" max="99" value="60">
+            <span id="pump_time">ポンプ作動秒:XX</span>
+            <input type="range" id="range_pump_time" min="0" max="99" value="60">
+            <span id="wait_time">待ち秒:XX</span>
+            <input type="range" id="range_wait_time" min="0" max="99" value="60">
+        </div>
+    </div>
+</body>
+
+<script>
+    //--------------------------------------------------
+    //Global変数
+    //--------------------------------------------------
+    //BlueJellyのインスタンス生成
+    const ble = new BlueJelly();
+    let connecting = false;
+
+    let count = 0;
+    let wCount = 0;
+    let currentWaterLevel = 0;
+    let status = 0;
+
+    let wateringLevel = 0;
+    let yellowLevel = 0;
+    let blueLevel = 0;
+    let pumpTime = 0;
+    let waitTime = 0;
+
+    let iHd = 0;
+    let nHd = 0;
+    let millisHd = 0;
+    let waterLevelHd = 0;
+    let nowMillis = 0;
+
+    let strStatus = [
+        "エラー",
+        "水やり中",
+        "赤色待機",
+        "黄色待機",
+        "青色待機"
+    ];
+
+    let historyData = new Array(200);
+    for (let i = 0; i < historyData.length; i++) {
+        historyData[i] = new Array(2);
+        historyData[i][0] = 0;
+        historyData[i][1] = 0;
+    }
+
+    // https://kurage.ready.jp/jhp_g/html5/canvas.html を参考にした。
+    function SVGline() {
+        //変数を整理したい。
+        var cnt = document.getElementById('conta');
+        while (cnt.firstChild) {
+            cnt.removeChild(cnt.firstChild);
+        }
+        var vwBXx = cnt.offsetWidth;    var vwBXy = cnt.offsetHeight;
+        var viewBX ='0 0 300 200';              // 0 0 vwBXx vwBXy
+        var x0 = 20;  var y0 = vwBXy - 20;      // グラフ原点
+        var x1 = vwBXx - 10;  var y1 = 10;      // グラフ右上
+        var xrng = x1 - x0; var yrng = y0 - y1; // グラフ領域  380 260
+        var xlab ='X 軸'; var ylab ='水分量%'; var titl ='';
+        var fsize = [10, 10, 10];               // 目盛・ラベル・タイトル
+        var ww = 200;  var hh = 100;            // 横max 縦max
+        var wwN = 10;  var hhN = 5;             // 横分割数 縦分割数
+        var fx= xrng / ww; var fy = yrng / hh;  // 表示比係数
+        
+        var uri = "http://www.w3.org/2000/svg";
+        var svg1 = document.createElementNS(uri, 'svg');
+        svg1.setAttribute('width', vwBXx);
+        svg1.setAttribute('height', vwBXy);
+        svg1.setAttribute('viewBox', viewBX);
+        svg1.setAttribute('style', "background:#dfb;");
+        cnt.appendChild(svg1);                  // svg1 をcnt に組込む
+        var g1 = document.createElementNS(uri, 'g');  
+        svg1.appendChild(g1);                   // グループg1 の組込み
+
+        // グラフ枠 
+        var rect = document.createElementNS(uri, 'rect');
+        rect.setAttribute('x', x0);
+        rect.setAttribute('y', y1);
+        rect.setAttribute('width', x1 - x0);
+        rect.setAttribute('height', y0 - y1);
+        rect.setAttribute('fill', '#ffe');
+        rect.setAttribute('stroke', 'black');
+        g1.appendChild(rect);                   // 枠の組込み
+
+        // タイトル
+        var txt = document.createElementNS(uri, 'text');
+        txt.textContent = titl;
+        txt.setAttribute('text-anchor', 'middle');
+        txt.setAttribute('font-size', fsize[2]);
+        txt.setAttribute('fill', 'blue');
+        txt.setAttribute('x', x0 + xrng / 2);
+        txt.setAttribute('y', 30);
+        g1.appendChild(txt);                    // タイトルの組込み
+
+        // x軸 ラベル・目盛
+        var txt = document.createElementNS(uri, 'text');
+        txt.textContent = xlab;
+        txt.setAttribute('text-anchor', 'middle');
+        txt.setAttribute('font-size', fsize[1]);
+        txt.setAttribute('x', x0 + xrng / 2);
+        txt.setAttribute('y', y0 + 40);
+        g1.appendChild(txt);                    // x軸 ラベルの組込み
+
+        for (var i = 0; i <= wwN; i++) {
+            var txt= document.createElementNS(uri, 'text');
+            txt.setAttribute('x', x0 + i * ww / wwN * fx);
+            txt.setAttribute('y', y0 + 15);
+            txt.setAttribute('dominant-baseline', 'middle');
+            txt.setAttribute('text-anchor', 'middle');
+            txt.setAttribute('font-size', fsize[0]);
+            txt.textContent = i * ww / wwN;
+            g1.appendChild(txt);
+            var lin = document.createElementNS(uri, 'line');
+            lin.setAttribute('x1', x0 + i * ww / wwN * fx);
+            lin.setAttribute('y1', y0);
+            lin.setAttribute('x2', x0 + i * ww / wwN * fx);
+            lin.setAttribute('y2', y0 - 5);
+            lin.setAttribute('stroke', 'blue');
+            g1.appendChild(lin);
+        };                                      // x軸 目盛の組込み
+
+        // y軸 ラベル・目盛
+        var txt = document.createElementNS(uri, 'text');
+        txt.textContent = ylab;
+        txt.setAttribute('text-anchor', 'middle');
+        txt.setAttribute('font-size', fsize[1]);
+        txt.setAttribute('x', x0 - 40);
+        txt.setAttribute('y', y0 / 2);
+        txt.setAttribute('transform', 'rotate(-90,' + (x0 - 40) + ',' + y0 / 2 + ')');
+        g1.appendChild(txt);                    // y軸 ラベルの組込み
+
+        for (var i = 0; i <= hhN; i++) {
+            var txt = document.createElementNS(uri, 'text');
+            txt.setAttribute('x', x0 - 5);
+            txt.setAttribute('y', y0 - i * hh / hhN * fy);
+            txt.setAttribute('dominant-baseline', 'middle');
+            txt.setAttribute('text-anchor', 'end');
+            txt.setAttribute('font-size', fsize[0]);
+            txt.textContent = i * hh / hhN;
+            g1.appendChild(txt);
+            var lin = document.createElementNS(uri, 'line');
+            lin.setAttribute('x1', x0);
+            lin.setAttribute('y1', y0 - i * hh / hhN * fy);
+            lin.setAttribute('x2', x0 + 5);
+            lin.setAttribute('y2', y0 - i * hh / hhN * fy);
+            lin.setAttribute('stroke', 'black');
+            g1.appendChild(lin);
+        };                                      // y軸 目盛の組込み
+
+
+/*
+
+        // data plot
+        for (var i = 0; i < nHd; i++) {
+            var cir = document.createElementNS(uri, 'circle');
+            cir.setAttribute('cx', x0 + i * fx);
+            cir.setAttribute('cy', y0 - historyData[i][0] * fy);
+            cir.setAttribute('r', 3);
+            cir.setAttribute('fill', '#3c3');
+            g1.appendChild(cir);                // ドット表示
+            var txt = document.createElementNS(uri, 'text');
+            txt.setAttribute('x', x0 + i * fx);
+            txt.setAttribute('y', y0 - historyData[i][0] * fy - 6);
+            txt.setAttribute('dominant-baseline', 'middle');
+            txt.setAttribute('text-anchor', 'middle');
+            txt.setAttribute('font-size', fsize[0]);
+            txt.setAttribute('fill', '#3c3');
+            txt.textContent = historyData[i][0];
+            g1.appendChild(txt);                // 値表示
+        }
+*/
+        var pat = document.createElementNS(uri, 'path');
+        var dpat = 'M ' + (x0 + 0) + ', ' + (y0 - historyData[0][0] * fy);
+        for (var i = 1; i < nHd; i++) {
+            dpat += ' ' + (x0 + i * fx) + ', ' + (y0 - historyData[i][0] * fy);
+        }
+        pat.setAttribute('d', dpat);
+        pat.setAttribute('stroke', '#3c3');
+        pat.setAttribute('stroke-width', '1');
+        pat.setAttribute('fill', 'none');
+        g1.appendChild(pat);                    // ライン接続
+    };
+
+    function drawCanvas() {
+        let canvas = document.getElementById("canvas");
+        if (!canvas || !canvas.getContext) return false;
+        let ctx = canvas.getContext("2d");
+
+        ctx.beginPath();
+        ctx.strokeStyle = "lightgray";
+        ctx.lineWidth = 19;
+        ctx.beginPath();
+        ctx.arc(120, 120, 100, 0, 2 * Math.PI, false);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.strokeStyle = "royalblue";
+        ctx.lineWidth = 20;
+        ctx.lineCap = "round";
+        
+        ctx.arc(120, 120, 100, -90 * Math.PI / 180, ((-90 + currentWaterLevel * 360 * 0.01) % 360) * Math.PI / 180, false);
+        ctx.stroke();
+
+    }
+
+    function SendBLECommand(str) {
+        //フォーマットに従って値を変換
+        const textEncoder = new TextEncoder();
+        const text_data_encoded = textEncoder.encode(str);
+
+        //write
+        ble.write("UUID1", text_data_encoded);
+        console.log(str);
+    }
+
+    //--------------------------------------------------
+    //ロード時の処理
+    //--------------------------------------------------
+    window.onload = function () {
+
+        drawCanvas();
+
+        //UUID1の設定
+        ble.setUUID("UUID1", "fd531f24-3c63-482a-bfb1-2c493e6f2c07",
+                "e953e123-8e3c-4de9-a70a-264898b4ea90");
+        if (connecting) {
+            document.getElementById("btn_connect").src = "./images/connect.png";
+        }
+        else {
+            document.getElementById("btn_connect").src = "./images/disconnect.png";
+        }
+
+        SVGline();
+
+    }
+
+    //--------------------------------------------------
+    //Scan後の処理
+    //--------------------------------------------------
+    ble.onScan = function (deviceName) {
+        document.getElementById("device_name").innerHTML = "デバイス名:" + deviceName;
+        document.getElementById("connect_status").innerHTML = "接続状態:found device!";
+    }
+
+    //--------------------------------------------------
+    //ConnectGATT後の処理
+    //--------------------------------------------------
+    ble.onConnectGATT = function (uuid) {
+        console.log("> connected GATT !");
+
+        document.getElementById("uuid_name").innerHTML = "UUID名:" + uuid;
+        document.getElementById("connect_status").innerHTML = "接続状態:connected GATT!";
+    }
+
+    //--------------------------------------------------
+    //Read後の処理：得られたデータの表示など行う
+    //--------------------------------------------------
+    ble.onRead = function (data, uuid) {
+        console.log("> ble.onRead");
+
+/*        
+        // デバッグ用
+        document.getElementById("dumpL").innerHTML = "data length:" + data.byteLength;
+        document.getElementById("dump1").innerHTML = "00:"
+                + data.getUint8(0).toString(16).padStart(2, '0') + "."
+                + data.getUint8(1).toString(16).padStart(2, '0') + "."
+                + data.getUint8(2).toString(16).padStart(2, '0') + "."
+                + data.getUint8(3).toString(16).padStart(2, '0') + "."
+                + data.getUint8(4).toString(16).padStart(2, '0') + "."
+                + data.getUint8(5).toString(16).padStart(2, '0') + "."
+                + data.getUint8(6).toString(16).padStart(2, '0') + "."
+                + data.getUint8(7).toString(16).padStart(2, '0') + "...."
+                + data.getUint8(8).toString(16).padStart(2, '0') + "."
+                + data.getUint8(9).toString(16).padStart(2, '0') + "."
+                + data.getUint8(10).toString(16).padStart(2, '0') + "."
+                + data.getUint8(11).toString(16).padStart(2, '0') + "."
+                + data.getUint8(12).toString(16).padStart(2, '0') + "."
+                + data.getUint8(13).toString(16).padStart(2, '0') + "."
+                + data.getUint8(14).toString(16).padStart(2, '0') + "."
+                + data.getUint8(15).toString(16).padStart(2, '0');
+        document.getElementById("dump2").innerHTML = "10:"
+                + data.getUint8(16).toString(16).padStart(2, '0') + "."
+                + data.getUint8(17).toString(16).padStart(2, '0') + "."
+                + data.getUint8(18).toString(16).padStart(2, '0') + "."
+                + data.getUint8(19).toString(16).padStart(2, '0') + "."
+                + data.getUint8(20).toString(16).padStart(2, '0') + "."
+                + data.getUint8(21).toString(16).padStart(2, '0') + "."
+                + data.getUint8(22).toString(16).padStart(2, '0') + "."
+                + data.getUint8(23).toString(16).padStart(2, '0') + "...."
+                + data.getUint8(24).toString(16).padStart(2, '0') + "."
+                + data.getUint8(25).toString(16).padStart(2, '0') + "."
+                + data.getUint8(26).toString(16).padStart(2, '0') + "."
+                + data.getUint8(27).toString(16).padStart(2, '0');
+        document.getElementById("dump3").innerHTML =
+                " getUint32(21):" + data.getUint32(21)
+                + " getUint32(22):" + data.getUint32(22)
+                + " getUint32(23):" + data.getUint32(23)
+                + " getUint32(24):" + data.getUint32(24);
+*/
+
+        //フォーマットに従って値を取得
+        count = data.getUint16(0, true);
+        wCount = data.getUint16(2, true);
+        currentWaterLevel = data.getUint8(4);
+        status = data.getUint8(5);
+        wateringLevel = data.getUint8(6);
+        yellowLevel = data.getUint8(7);
+        blueLevel = data.getUint8(8);
+        pumpTime = data.getUint8(9);
+        waitTime = data.getUint8(10);
+
+        //履歴データを取得
+        iHd = data.getUint8(12);
+        nHd = data.getUint8(13);
+        millisHd = data.getUint32(16, true);
+        waterLevelHd = data.getUint8(20);
+        nowMillis = data.getUint32(24, true);
+
+        historyData[iHd][0] = waterLevelHd;
+        historyData[iHd][1] = Date.now() - (nowMillis - millisHd);
+
+        //HTMLにデータを表示
+        document.getElementById("uuid_name").innerHTML = "UUID名:" + uuid;
+        document.getElementById("current_water_level").innerHTML = currentWaterLevel + "%";
+        document.getElementById("status").innerHTML = "装置の状態:" + strStatus[status];
+        document.getElementById("count").innerHTML = "カウント:" + count;
+        document.getElementById("watering_count").innerHTML = "水やりカウント:" + wCount;
+
+        document.getElementById("watering_level").innerHTML = "水やりレベル:" + wateringLevel;
+        document.getElementById("yellow_level").innerHTML = "黄色レベル:" + yellowLevel;
+        document.getElementById("blue_level").innerHTML = "青色レベル:" + blueLevel;
+        document.getElementById("pump_time").innerHTML = "ポンプ作動秒:" + pumpTime;
+        document.getElementById("wait_time").innerHTML = "待ち秒:" + waitTime;
+    
+        document.getElementById("range_watering_level").value = wateringLevel;
+        document.getElementById("range_yellow_level").value = yellowLevel;
+        document.getElementById("range_blue_level").value = blueLevel;
+        document.getElementById("range_pump_time").value = pumpTime;
+        document.getElementById("range_wait_time").value = waitTime;
+
+        drawCanvas();
+
+        document.getElementById("iHd").innerHTML = "iHd:" + iHd;
+        document.getElementById("nHd").innerHTML = "nHd:" + nHd;
+        document.getElementById("millisHd").innerHTML = "millisHd:" + millisHd;
+        document.getElementById("waterLevelHd").innerHTML = "waterLevelHd:" + waterLevelHd;
+        document.getElementById("nowMillis").innerHTML = "nowMillis:" + nowMillis;
+
+        SVGline();
+    }
+
+    //--------------------------------------------------
+    //Start Notify後の処理
+    //--------------------------------------------------
+    ble.onStartNotify = function (uuid) {
+        console.log("> Start Notify !");
+
+        document.getElementById("uuid_name").innerHTML = "UUID名:" + uuid;
+        document.getElementById("connect_status").innerHTML = "接続状態:started Notify";
+        document.getElementById("btn_connect").src = "./images/connect.png";
+        connecting = true;
+    }
+
+    //--------------------------------------------------
+    //Stop Notify後の処理
+    //--------------------------------------------------
+    ble.onStopNotify = function (uuid) {
+        console.log("> Stop Notify !");
+
+        document.getElementById("uuid_name").innerHTML = uuid;
+        document.getElementById("connect_status").innerHTML = "接続状態:stopped Notify";
+        document.getElementById("btn_connect").src = "./images/disconnect.png";
+        connecting = false;
+    }
+
+    //--------------------------------------------------
+    //Write後の処理
+    //--------------------------------------------------
+    ble.onWrite = function (uuid) {
+        document.getElementById("uuid_name").innerHTML = uuid;
+        document.getElementById("connect_status").innerHTML = "接続状態:written data"
+    }
+
+    //-------------------------------------------------
+    //ボタンが押された時のイベント登録
+    //--------------------------------------------------
+    document.getElementById("btn_connect").addEventListener("click", function () {
+        if (connecting) {
+            ble.stopNotify("UUID1");
+            document.getElementById("btn_connect").src = "./images/disconnect.png";
+            connecting = false;
+        }
+        else {
+            ble.startNotify("UUID1");
+            document.getElementById("btn_connect").src = "./images/connect.png";
+            connecting = true;
+        }
+    });
+
+    document.getElementById("btn_info").addEventListener("click", function () {
+        alert("BOWL(SALZmini2022Receiver)");
+    });
+
+    document.getElementById("btn_watering_now").addEventListener("click", function () {
+        SendBLECommand("WN");
+    });
+
+    //-------------------------------------------------
+    //スライダーを動かした時のイベント登録
+    //--------------------------------------------------
+    document.getElementById("range_watering_level").addEventListener("input", function () {
+        wateringLevel = document.getElementById("range_watering_level").value;
+        document.getElementById("watering_level").innerHTML = "水やりレベル:" + wateringLevel;
+        SendBLECommand("WL" + wateringLevel);
+    });
+    document.getElementById("range_yellow_level").addEventListener("input", function () {
+        yellowLevel = document.getElementById("range_yellow_level").value;
+        document.getElementById("yellow_level").innerHTML = "黄色レベル:" + yellowLevel;
+        SendBLECommand("YL" + yellowLevel);
+    });
+    document.getElementById("range_blue_level").addEventListener("input", function () {
+        blueLevel = document.getElementById("range_blue_level").value;
+        document.getElementById("blue_level").innerHTML = "青色レベル:" + blueLevel;
+        SendBLECommand("BL" + blueLevel);
+    });
+    document.getElementById("range_pump_time").addEventListener("input", function () {
+        pumpTime = document.getElementById("range_pump_time").value;
+        document.getElementById("pump_time").innerHTML = "ポンプ作動秒:" + pumpTime;
+        SendBLECommand("PT" + pumpTime);
+    });
+    document.getElementById("range_wait_time").addEventListener("input", function () {
+        waitTime = document.getElementById("range_wait_time").value;
+        document.getElementById("wait_time").innerHTML = "待ち秒:" + waitTime;
+        SendBLECommand("WT" + waitTime);
+    });
+ 
+</script>
+
+</html> <br /><br />
+
+<style>
+    main {
+        width: 100%;
+    }
+
+    #text1 {
+        color: rgba(0, 0, 0, 1);
+        width: 94px;
+        height: 39px;
+        position: absolute;
+        left: 14px;
+        top: 7px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 40px;
+        letter-spacing: 0;
+    }
+
+    #text2 {
+        color: rgb(7, 41, 31);
+        width: 150px;
+        height: 15px;
+        position: absolute;
+        left: 140px;
+        top: 32px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 16px;
+        letter-spacing: 0;
+    }
+
+    #current_water_level {
+        color: rgba(30.00000011175871, 30.00000011175871, 30.00000011175871, 1);
+        width: 125.33332824707031px;
+        height: 76.90908813476562px;
+        position: absolute;
+        left: 55.545433044433594px;
+        top: 78.33334350585938px;
+        font-family: Inter;
+        text-align: center;
+        font-size: 40px;
+        letter-spacing: 0;
+    }
+
+    #frame3 {
+        width: 114px;
+        height: 44px;
+        position: absolute;
+        left: 80px;
+        top: 127px;
+    }
+
+    #count {
+        color: rgba(0, 0, 0, 1);
+        width: 150px;
+        height: 13px;
+        position: absolute;
+        left: 0px;
+        top: 15px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    #status {
+        color: rgba(0, 0, 0, 1);
+        width: 150px;
+        height: 15px;
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    #watering_count {
+        color: rgba(0, 0, 0, 1);
+        width: 150px;
+        height: 15px;
+        position: absolute;
+        left: 0px;
+        top: 31px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    #btn_watering_now {
+        position: absolute;
+        left: 190px;
+        top: 320px;
+    }
+
+    #btn_watering_now a {
+        position: relative;
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        margin: 0 auto;
+        max-width: 130px;
+        padding: 10px 25px;
+        color: #543618;
+        transition: 0.3s ease-in-out;
+        font-weight: 600;
+        background: #eeee;
+        border-radius: 50px;
+        border: 0.2rem solid #543618;
+        box-shadow: 0.2rem 0.2rem 0px 0.1rem #cccccc;
+        text-decoration: none;
+    }
+
+    #btn_watering_now a:hover {
+        transform: translate3d(0.2rem, 0.2rem, 0);
+        box-shadow: none;
+        opacity: 1;
+        transition: all 0.2s;
+    }
+
+    #btn_watering_now a:after {
+        content: '';
+        width: 5px;
+        height: 5px;
+        border-top: 3px solid #543618;
+        border-right: 3px solid #543618;
+        transform: rotate(45deg) translateY(-50%);
+        position: absolute;
+        top: 50%;
+        right: 20px;
+        border-radius: 1px;
+        transition: 0.3s ease-in-out;
+    }
+
+    #device_name {
+        color: rgba(0, 0, 0, 1);
+        width: 200px;
+        height: 15px;
+        position: absolute;
+        left: 60px;
+        top: 64px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    #uuid_name {
+        color: rgba(0, 0, 0, 1);
+        width: 200px;
+        height: 15px;
+        position: absolute;
+        left: 60px;
+        top: 82px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    #connect_status {
+        color: rgba(0, 0, 0, 1);
+        width: 200px;
+        height: 15px;
+        position: absolute;
+        left: 60px;
+        top: 98px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    #btn_connect {
+        width: 22px;
+        height: 22px;
+        position: absolute;
+        left: 18px;
+        top: 61px;
+    }
+
+    #connect {
+        width: 20px;
+        height: 20px;
+        position: absolute;
+        left: 0px;
+        top: 0px;
+    }
+
+    #btn_info {
+        width: 24px;
+        height: 24px;
+        position: absolute;
+        left: 327px;
+        top: 14px;
+    }
+
+    #setteings {
+        width: 24px;
+        height: 24px;
+        position: absolute;
+        left: 20px;
+        top: 10px;
+    }
+
+    #watering_level {
+        color: rgba(0, 0, 0, 1);
+        width: 123px;
+        height: 24px;
+        position: absolute;
+        left: 40px;
+        top: 40px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    #range_watering_level {
+        background-color: rgba(255, 255, 255, 1);
+        width: 260px;
+        height: 28px;
+        position: absolute;
+        left: 40px;
+        top: 50px;
+    }
+
+    #yellow_level {
+        color: rgba(0, 0, 0, 1);
+        width: 123px;
+        height: 24px;
+        position: absolute;
+        left: 40px;
+        top: 77px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    #range_yellow_level {
+        background-color: rgba(255, 255, 255, 1);
+        width: 260px;
+        height: 28px;
+        position: absolute;
+        left: 40px;
+        top: 87px;
+    }
+
+    #blue_level {
+        color: rgba(0, 0, 0, 1);
+        width: 123px;
+        height: 24px;
+        position: absolute;
+        left: 40px;
+        top: 114px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    #range_blue_level {
+        background-color: rgba(255, 255, 255, 1);
+        width: 260px;
+        height: 28px;
+        position: absolute;
+        left: 40px;
+        top: 124px;
+    }
+
+    #pump_time {
+        color: rgba(0, 0, 0, 1);
+        width: 120px;
+        height: 24px;
+        position: absolute;
+        left: 40px;
+        top: 151px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    #range_pump_time {
+        background-color: rgba(255, 255, 255, 1);
+        width: 260px;
+        height: 28px;
+        position: absolute;
+        left: 40px;
+        top: 161px;
+    }
+
+    #wait_time {
+        color: rgba(0, 0, 0, 1);
+        width: 123px;
+        height: 24px;
+        position: absolute;
+        left: 40px;
+        top: 188px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+
+    #range_wait_time {
+        background-color: rgba(255, 255, 255, 1);
+        width: 260px;
+        height: 28px;
+        position: absolute;
+        left: 40px;
+        top: 198px;
+    }
+
+    #iHd {
+        color: rgba(0, 0, 0, 1);
+        width: 123px;
+        height: 24px;
+        position: absolute;
+        left: 20px;
+        top: 40px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+    #nHd {
+        color: rgba(0, 0, 0, 1);
+        width: 123px;
+        height: 24px;
+        position: absolute;
+        left: 20px;
+        top: 60px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+    #millisHd {
+        color: rgba(0, 0, 0, 1);
+        width: 123px;
+        height: 24px;
+        position: absolute;
+        left: 20px;
+        top: 80px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+    #waterLevelHd {
+        color: rgba(0, 0, 0, 1);
+        width: 123px;
+        height: 24px;
+        position: absolute;
+        left: 20px;
+        top: 100px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+    #nowMillis {
+        color: rgba(0, 0, 0, 1);
+        width: 123px;
+        height: 24px;
+        position: absolute;
+        left: 20px;
+        top: 120px;
+        font-family: Inter;
+        text-align: left;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+    #dumpL {
+        color: rgba(0, 0, 0, 1);
+        width: 400px;
+        height: 24px;
+        position: absolute;
+        left: 20px;
+        top: 140px;
+        font-family: monospace;
+        text-align: left;
+        font-size: 10px;
+        letter-spacing: 0;
+    }
+    #dump1 {
+        color: rgba(0, 0, 0, 1);
+        width: 400px;
+        height: 24px;
+        position: absolute;
+        left: 20px;
+        top: 160px;
+        font-family: monospace;
+        text-align: left;
+        font-size: 10px;
+        letter-spacing: 0;
+    }
+    #dump2 {
+        color: rgba(0, 0, 0, 1);
+        width: 400px;
+        height: 24px;
+        position: absolute;
+        left: 20px;
+        top: 180px;
+        font-family: monospace;
+        text-align: left;
+        font-size: 10px;
+        letter-spacing: 0;
+    }
+    #dump3 {
+        color: rgba(0, 0, 0, 1);
+        width: 400px;
+        height: 24px;
+        position: absolute;
+        left: 20px;
+        top: 200px;
+        font-family: monospace;
+        text-align: left;
+        font-size: 10px;
+        letter-spacing: 0;
+    }
+
+    #index {
+        background-image: url(./images/background.jpg);
+        background-repeat: no-repeat;
+        background-position: center top;
+        background-attachment: fixed;
+        background-size: cover;
+    }
+
+    #frameBase {
+        overflow: hidden;
+        background-image: linear-gradient(0deg, rgba(33.29166658222675, 85.0000025331974, 44.66752655804157, 1) 0%, rgba(33.29166658222675, 85.0000025331974, 44.66752655804157, 0.7300000190734863) 100%);
+        width: 360px;
+        height: 1150px;
+        position: relative;
+        margin: auto;
+    }
+
+    #frameMainDisp {
+        width: 235px;
+        height: 235px;
+        position: absolute;
+        left: 60px;
+        top: 121px;
+    }
+
+    #frameHistoryData {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: rgba(217.0000022649765, 217.0000022649765, 217.0000022649765, 1);
+        width: 338px;
+        height: 232px;
+        position: absolute;
+        left: 9px;
+        top: 400px;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        border-bottom-left-radius: 10px;
+        border-bottom-right-radius: 10px;
+    }
+
+    #frameSettings {
+        background-color: rgba(217.0000022649765, 217.0000022649765, 217.0000022649765, 1);
+        width: 338px;
+        height: 232px;
+        position: absolute;
+        left: 9px;
+        top: 650px;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        border-bottom-left-radius: 10px;
+        border-bottom-right-radius: 10px;
+    }
+
+    #frameDebugPrints {
+        background-color: rgba(217.0000022649765, 217.0000022649765, 217.0000022649765, 1);
+        width: 338px;
+        height: 232px;
+        position: absolute;
+        left: 9px;
+        top: 900px;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        border-bottom-left-radius: 10px;
+        border-bottom-right-radius: 10px;
+    }
+
+    #wrap {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #3ba;
+        width: 302px;
+        height: 202px;
+        margin: auto;
+    }
+
+    #conta {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #dff;
+        width: 300px;
+        height: 200px;
+        margin: auto;
+    }
+
+</style>
