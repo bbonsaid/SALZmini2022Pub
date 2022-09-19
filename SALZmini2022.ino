@@ -400,7 +400,19 @@ int
 GetInput(void) {
   int input = IN_NOOP;
 
-  if (TimeDiff(millis(), waitTimeMillis) > SECONDS(salzData.waitTime)) {
+  if (prevDeviceConnected == false && deviceConnected == true) {
+    Serial.print("C");
+    prevDeviceConnected = deviceConnected;
+    input = IN_CNCT;
+  }
+  else if (prevDeviceConnected == true && deviceConnected == false) {
+    Serial.print("D");
+    delay(500); // give the bluetooth stack the chance to get things ready
+    pServer->startAdvertising(); // restart advertising
+    prevDeviceConnected = deviceConnected;
+    input = IN_DCNT;
+  }
+  else if (TimeDiff(millis(), waitTimeMillis) > SECONDS(salzData.waitTime)) {
     Serial.print("w");
     input = IN_WLGT;
   }
@@ -424,18 +436,6 @@ GetInput(void) {
   else if (bPump && TimeDiff(millis(), pumpTimeMillis) > SECONDS(salzData.pumpTime)) {
     Serial.print("P");
     input = IN_POFF;
-  }
-  else if (prevDeviceConnected == false && deviceConnected == true) {
-    Serial.print("C");
-    prevDeviceConnected = deviceConnected;
-    input = IN_CNCT;
-  }
-  else if (prevDeviceConnected == true && deviceConnected == false) {
-    Serial.print("D");
-    delay(500); // give the bluetooth stack the chance to get things ready
-    pServer->startAdvertising(); // restart advertising
-    prevDeviceConnected = deviceConnected;
-    input = IN_DCNT;
   }
   else {
     //Serial.print("n");
@@ -532,6 +532,8 @@ setup(void) {
                   0);        /* Core where the task should run */
 
   salzData.currentWaterLevel = GetCurrentWaterLevel();
+  SetAdvartiseData();
+  SetHistoryData();
 }
 
 
