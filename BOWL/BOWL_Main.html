@@ -163,6 +163,18 @@
         txt.setAttribute('y', 30);
         g1.appendChild(txt);                    // タイトルの組込み
 
+
+//昼夜表示
+        for (var i = 0; i < 200; i++) {
+            var rect = document.createElementNS(uri, 'rect');
+            rect.setAttribute('x', x0 + i * fx);
+            rect.setAttribute('y', y1);
+            rect.setAttribute('width', fx);
+            rect.setAttribute('height', yrng);
+            rect.setAttribute('fill', (i / 100 * 100 == i) ? '#ffe' : '#dda');
+            g1.appendChild(rect);                   // 枠の組込み
+        }
+
         // x軸 ラベル・目盛
         var txt = document.createElementNS(uri, 'text');
         txt.textContent = xlab;
@@ -220,7 +232,6 @@
 
 
 /*
-
         // data plot
         for (var i = 0; i < nHd; i++) {
             var cir = document.createElementNS(uri, 'circle');
